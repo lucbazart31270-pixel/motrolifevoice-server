@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>MotrolifeVoice</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0e0e12; color:#e0e0e0; font-family:'Segoe UI',sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; }
+    .logo { font-size:22px; font-weight:700; color:#ff6b35; margin-bottom:4px; }
+    .sub { font-size:12px; color:#555; margin-bottom:20px; }
+    #status { background:#1a1a22; border:1px solid #2a2a35; border-radius:10px; padding:12px 20px; width:100%; max-width:360px; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    #dot { width:10px; height:10px; border-radius:50%; background:#ff4444; flex-shrink:0; }
+    #dot.on { background:#44ff88; animation:pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    #stxt { font-size:13px; color:#aaa; }
+    #mute-btn { width:100%; max-width:360px; padding:14px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; background:#ff6b35; color:#fff; margin-bottom:20px; transition:background 0.2s; }
+    #mute-btn:hover { background:#e05a28; }
+    #mute-btn.muted { background:#444; color:#aaa; }
+    .stitle { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#555; width:100%; max-width:360px; margin-bottom:10px; }
+    #plist { width:100%; max-width:360px; display:flex; flex-direction:column; gap:8px; }
+    .pcard { background:#1a1a22; border:1px solid #ff6b35; border-radius:10px; padding:10px 14px; display:flex; align-items:center; gap:12px; }
+    .pav { width:36px; height:36px; background:#ff6b35; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; color:#fff; }
+    .pname { font-size:14px; font-weight:600; }
+    .pdist { font-size:11px; color:#666; margin-top:2px; }
+    .vbar { width:60px; height:4px; background:#2a2a35; border-radius:2px; overflow:hidden; margin-left:auto; }
+    .vfill { height:100%; background:#ff6b35; border-radius:2px; transition:width 0.3s; }
+    #empty { color:#444; font-size:13px; text-align:center; padding:20px; }
+  </style>
+</head>
+<body>
+  <div class="logo">🎙 MotrolifeVoice</div>
+  <div class="sub">by Lucas & Julien</div>
+  <div id="status"><div id="dot"></div><div id="stxt">Connexion...</div></div>
+  <button id="mute-btn" onclick="toggleMute()">🎙 Micro activé</button>
+  <div class="stitle">Joueurs à portée</div>
+  <div id="plist"><div id="empty">Aucun joueur à proximité</div></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const myId = params.get("player") || "0";
+    const myName = params.get("name") || "Joueur";
+    const socket = io();
+    let muted = false, stream = null;
+    const peers = {}, volumes = {};
+
+    navigator.mediaDevices.getUserMedia({ audio:true, video:false })
+      .then(s => { stream = s; socket.emit("join", { playerId: myId, playerName: myName }); })
+      .catch(e => { document.getElementById("stxt").textContent = "❌ Micro refusé"; });
+
+    socket.on("connect", () => {
+      document.getElementById("dot").classList.add("on");
+      document.getElementById("stxt").textContent = "Connecté — " + myName;
+    });
+    socket.on("disconnect", () => document.getElementById("dot").classList.remove("on"));
+
+    socket.on("existing-players", players => players.forEach(p => createPeer(p.socketId, p.playerName, true)));
+    socket.on("player-joined", ({ socketId, playerName }) => createPeer(socketId, playerName, false));
+    socket.on("player-left", ({ socketId }) => {
+      if (peers[socketId]) { peers[socketId].pc.close(); peers[socketId].audio.remove(); delete peers[socketId]; }
+      updateUI();
+    });
+    socket.on("nearby-players", list => {
+      list.forEach(({ socketId, volume, distance }) => {
+        if (peers[socketId]) { peers[socketId].volume = volume; peers[socketId].distance = distance; if (peers[socketId].audio) peers[socketId].audio.volume = volume; }
+      });
+      Object.keys(peers).forEach(id => { if (!list.find(p => p.socketId === id)) { if (peers[id].audio) peers[id].audio.volume = 0; peers[id].volume = 0; peers[id].distance = null; } });
+      updateUI();
+    });
+    socket.on("webrtc-offer", async ({ fromSocketId, fromName, offer }) => {
+      const pc = getPC(fromSocketId, fromName);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("webrtc-answer", { targetSocketId: fromSocketId, answer });
+    });
+    socket.on("webrtc-answer", async ({ fromSocketId, answer }) => { if (peers[fromSocketId]) await peers[fromSocketId].pc.setRemoteDescription(new RTCSessionDescription(answer)); });
+    socket.on("ice-candidate", ({ fromSocketId, candidate }) => { if (peers[fromSocketId] && candidate) peers[fromSocketId].pc.addIceCandidate(new RTCIceCandidate(candidate)); });
+    socket.on("player-muted", ({ socketId, muted }) => { if (peers[socketId]?.audio) peers[socketId].audio.muted = muted; });
+
+    function getPC(socketId, name) {
+      if (peers[socketId]) return peers[socketId].pc;
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      const audio = new Audio(); audio.autoplay = true;
+      if (stream) stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      pc.ontrack = e => { audio.srcObject = e.streams[0]; };
+      pc.onicecandidate = e => { if (e.candidate) socket.emit("ice-candidate", { targetSocketId: socketId, candidate: e.candidate }); };
+      peers[socketId] = { pc, audio, name, volume: 1, distance: null };
+      updateUI();
+      return pc;
+    }
+
+    function createPeer(socketId, name, init) {
+      const pc = getPC(socketId, name);
+      if (init) pc.createOffer().then(o => { pc.setLocalDescription(o); socket.emit("webrtc-offer", { targetSocketId: socketId, offer: o }); });
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      if (stream) stream.getAudioTracks().forEach(t => t.enabled = !muted);
+      const btn = document.getElementById("mute-btn");
+      btn.textContent = muted ? "🔇 Micro coupé" : "🎙 Micro activé";
+      btn.classList.toggle("muted", muted);
+      socket.emit("toggle-mute", muted);
+    }
+
+    function updateUI() {
+      const list = document.getElementById("plist");
+      const entries = Object.entries(peers);
+      if (!entries.length) { list.innerHTML = '<div id="empty">Aucun joueur à proximité</div>'; return; }
+      list.innerHTML = entries.map(([id, p]) => `
+        <div class="pcard">
+          <div class="pav">${(p.name||"?")[0].toUpperCase()}</div>
+          <div><div class="pname">${p.name||"Joueur"}</div><div class="pdist">${p.distance !== null ? p.distance+"m" : "hors portée"}</div></div>
+          <div class="vbar"><div class="vfill" style="width:${Math.round((p.volume||0)*100)}%"></div></div>
+        </div>`).join("");
+    }
+  </script>
+</body>
+</html>
