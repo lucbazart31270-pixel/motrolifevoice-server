@@ -41,19 +41,38 @@
     const myId = params.get("player") || "0";
     const myName = params.get("name") || "Joueur";
     const socket = io();
+    window._mvSocket = socket;
     let muted = false, stream = null;
-    const peers = {}, volumes = {};
+    const peers = {};
 
     navigator.mediaDevices.getUserMedia({ audio:true, video:false })
-      .then(s => { stream = s; socket.emit("join", { playerId: myId, playerName: myName }); })
-      .catch(e => { document.getElementById("stxt").textContent = "❌ Micro refusé"; });
+      .then(s => {
+        stream = s;
+        socket.emit("join", { playerId: myId, playerName: myName });
+        // Envoie la position toutes les secondes (simulée ici, vraie position vient de BeamNG)
+        setInterval(() => {
+          const x = parseFloat(sessionStorage.getItem("mvX") || "0");
+          const y = parseFloat(sessionStorage.getItem("mvY") || "0");
+          const z = parseFloat(sessionStorage.getItem("mvZ") || "0");
+          socket.emit("update-position", { x, y, z });
+        }, 500);
+      })
+      .catch(() => { document.getElementById("stxt").textContent = "❌ Micro refusé"; });
+
+    // Reçoit la position depuis BeamNG via postMessage
+    window.addEventListener("message", (e) => {
+      if (e.data && e.data.type === "mvPosition") {
+        sessionStorage.setItem("mvX", e.data.x);
+        sessionStorage.setItem("mvY", e.data.y);
+        sessionStorage.setItem("mvZ", e.data.z);
+      }
+    });
 
     socket.on("connect", () => {
       document.getElementById("dot").classList.add("on");
       document.getElementById("stxt").textContent = "Connecté — " + myName;
     });
     socket.on("disconnect", () => document.getElementById("dot").classList.remove("on"));
-
     socket.on("existing-players", players => players.forEach(p => createPeer(p.socketId, p.playerName, true)));
     socket.on("player-joined", ({ socketId, playerName }) => createPeer(socketId, playerName, false));
     socket.on("player-left", ({ socketId }) => {
@@ -62,9 +81,19 @@
     });
     socket.on("nearby-players", list => {
       list.forEach(({ socketId, volume, distance }) => {
-        if (peers[socketId]) { peers[socketId].volume = volume; peers[socketId].distance = distance; if (peers[socketId].audio) peers[socketId].audio.volume = volume; }
+        if (peers[socketId]) {
+          peers[socketId].volume = volume;
+          peers[socketId].distance = distance;
+          if (peers[socketId].audio) peers[socketId].audio.volume = volume;
+        }
       });
-      Object.keys(peers).forEach(id => { if (!list.find(p => p.socketId === id)) { if (peers[id].audio) peers[id].audio.volume = 0; peers[id].volume = 0; peers[id].distance = null; } });
+      Object.keys(peers).forEach(id => {
+        if (!list.find(p => p.socketId === id)) {
+          if (peers[id].audio) peers[id].audio.volume = 0;
+          peers[id].volume = 0;
+          peers[id].distance = null;
+        }
+      });
       updateUI();
     });
     socket.on("webrtc-offer", async ({ fromSocketId, fromName, offer }) => {
@@ -74,9 +103,15 @@
       await pc.setLocalDescription(answer);
       socket.emit("webrtc-answer", { targetSocketId: fromSocketId, answer });
     });
-    socket.on("webrtc-answer", async ({ fromSocketId, answer }) => { if (peers[fromSocketId]) await peers[fromSocketId].pc.setRemoteDescription(new RTCSessionDescription(answer)); });
-    socket.on("ice-candidate", ({ fromSocketId, candidate }) => { if (peers[fromSocketId] && candidate) peers[fromSocketId].pc.addIceCandidate(new RTCIceCandidate(candidate)); });
-    socket.on("player-muted", ({ socketId, muted }) => { if (peers[socketId]?.audio) peers[socketId].audio.muted = muted; });
+    socket.on("webrtc-answer", async ({ fromSocketId, answer }) => {
+      if (peers[fromSocketId]) await peers[fromSocketId].pc.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+    socket.on("ice-candidate", ({ fromSocketId, candidate }) => {
+      if (peers[fromSocketId] && candidate) peers[fromSocketId].pc.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+    socket.on("player-muted", ({ socketId, muted }) => {
+      if (peers[socketId]?.audio) peers[socketId].audio.muted = muted;
+    });
 
     function getPC(socketId, name) {
       if (peers[socketId]) return peers[socketId].pc;
