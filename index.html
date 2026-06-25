@@ -6,19 +6,58 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#0e0e12; color:#e0e0e0; font-family:'Segoe UI',sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; }
-    .logo { font-size:22px; font-weight:700; color:#ff6b35; margin-bottom:4px; }
-    .sub { font-size:12px; color:#555; margin-bottom:20px; }
-    #status { background:#1a1a22; border:1px solid #2a2a35; border-radius:10px; padding:12px 20px; width:100%; max-width:360px; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    body { background:#0e0e12; color:#e0e0e0; font-family:'Segoe UI',sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; min-height:100vh; }
+
+    .logo { font-size:24px; font-weight:700; color:#ff6b35; margin-bottom:4px; }
+    .sub { font-size:12px; color:#555; margin-bottom:24px; }
+
+    /* ===== DASHBOARD ===== */
+    #dashboard { width:100%; max-width:500px; }
+
+    .dash-status { background:#1a1a22; border:1px solid #2a2a35; border-radius:14px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .dash-dot { width:12px; height:12px; border-radius:50%; background:#44ff88; animation:pulse 2s infinite; flex-shrink:0; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .dash-info { flex:1; }
+    .dash-info .title { font-size:14px; font-weight:700; color:#fff; }
+    .dash-info .sub2 { font-size:11px; color:#555; margin-top:2px; }
+    .dash-count { background:#ff6b35; color:#fff; font-size:13px; font-weight:700; padding:6px 14px; border-radius:20px; }
+
+    .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#444; margin-bottom:12px; }
+
+    .player-grid { display:flex; flex-direction:column; gap:10px; }
+
+    .player-card { background:#1a1a22; border:1px solid #2a2a35; border-radius:12px; padding:12px 16px; display:flex; align-items:center; gap:14px; transition:border-color 0.3s; }
+    .player-card:hover { border-color:#ff6b35; }
+
+    .av { width:40px; height:40px; background:#ff6b35; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; color:#fff; flex-shrink:0; }
+
+    .player-info { flex:1; }
+    .player-name { font-size:14px; font-weight:600; color:#fff; }
+    .player-sub { font-size:11px; color:#555; margin-top:3px; }
+
+    .badges { display:flex; gap:6px; flex-direction:column; align-items:flex-end; }
+    .badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; }
+    .badge.vocal { background:#1a3a1a; color:#44ff88; border:1px solid #44ff8855; }
+    .badge.muted { background:#2a1a1a; color:#ff4444; border:1px solid #ff444455; }
+
+    #empty-dash { color:#333; font-size:13px; text-align:center; padding:40px; border:1px dashed #222; border-radius:12px; }
+
+    .refresh-info { font-size:10px; color:#333; text-align:center; margin-top:16px; }
+
+    /* ===== VOCAL MODE ===== */
+    #vocal-mode { width:100%; max-width:360px; display:none; }
+
+    #status { background:#1a1a22; border:1px solid #2a2a35; border-radius:10px; padding:12px 20px; width:100%; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
     #dot { width:10px; height:10px; border-radius:50%; background:#ff4444; flex-shrink:0; }
     #dot.on { background:#44ff88; animation:pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
     #stxt { font-size:13px; color:#aaa; }
-    #mute-btn { width:100%; max-width:360px; padding:14px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; background:#ff6b35; color:#fff; margin-bottom:20px; transition:background 0.2s; }
+
+    #mute-btn { width:100%; padding:14px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; background:#ff6b35; color:#fff; margin-bottom:20px; transition:background 0.2s; }
     #mute-btn:hover { background:#e05a28; }
     #mute-btn.muted { background:#444; color:#aaa; }
-    .stitle { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#555; width:100%; max-width:360px; margin-bottom:10px; }
-    #plist { width:100%; max-width:360px; display:flex; flex-direction:column; gap:8px; }
+
+    .stitle { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#555; width:100%; margin-bottom:10px; }
+    #plist { width:100%; display:flex; flex-direction:column; gap:8px; }
     .pcard { background:#1a1a22; border:1px solid #ff6b35; border-radius:10px; padding:10px 14px; display:flex; align-items:center; gap:12px; }
     .pav { width:36px; height:36px; background:#ff6b35; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; color:#fff; }
     .pname { font-size:14px; font-weight:600; }
@@ -31,125 +70,170 @@
 <body>
   <div class="logo">🎙 MotrolifeVoice</div>
   <div class="sub">by Lucas & Julien</div>
-  <div id="status"><div id="dot"></div><div id="stxt">Connexion...</div></div>
-  <button id="mute-btn" onclick="toggleMute()">🎙 Micro activé</button>
-  <div class="stitle">Joueurs à portée</div>
-  <div id="plist"><div id="empty">Aucun joueur à proximité</div></div>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div id="dashboard">
+    <div class="dash-status">
+      <div class="dash-dot"></div>
+      <div class="dash-info">
+        <div class="title">🟢 Serveur Vocal en ligne</div>
+        <div class="sub2">motrolifevoice-server.onrender.com</div>
+      </div>
+      <div class="dash-count" id="dash-count">0 joueur</div>
+    </div>
+
+    <div class="section-title">🎮 Joueurs connectés</div>
+    <div class="player-grid" id="player-grid">
+      <div id="empty-dash">Aucun joueur connecté pour le moment</div>
+    </div>
+    <div class="refresh-info">🔄 Actualisation automatique toutes les 3 secondes</div>
+  </div>
+
+  <!-- ===== VOCAL MODE ===== -->
+  <div id="vocal-mode">
+    <div id="status"><div id="dot"></div><div id="stxt">Connexion...</div></div>
+    <button id="mute-btn" onclick="toggleMute()">🎙 Micro activé</button>
+    <div class="stitle">Joueurs à portée</div>
+    <div id="plist"><div id="empty">Aucun joueur à proximité</div></div>
+  </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const myId = params.get("player") || "0";
-    const myName = params.get("name") || "Joueur";
-    const socket = io();
-    window._mvSocket = socket;
-    let muted = false, stream = null;
-    const peers = {};
+    const myId = params.get("player");
+    const myName = params.get("name");
+    const isVocalMode = myId !== null && myName !== null;
 
-    navigator.mediaDevices.getUserMedia({ audio:true, video:false })
-      .then(s => {
-        stream = s;
-        socket.emit("join", { playerId: myId, playerName: myName });
-        // Envoie la position toutes les secondes (simulée ici, vraie position vient de BeamNG)
-        setInterval(() => {
-          const x = parseFloat(sessionStorage.getItem("mvX") || "0");
-          const y = parseFloat(sessionStorage.getItem("mvY") || "0");
-          const z = parseFloat(sessionStorage.getItem("mvZ") || "0");
-          socket.emit("update-position", { x, y, z });
-        }, 500);
-      })
-      .catch(() => { document.getElementById("stxt").textContent = "❌ Micro refusé"; });
+    // ===== MODE DASHBOARD =====
+    if (!isVocalMode) {
+      async function refreshDashboard() {
+        try {
+          const res = await fetch("/api/players");
+          const data = await res.json();
 
-    // Reçoit la position depuis BeamNG via postMessage
-    window.addEventListener("message", (e) => {
-      if (e.data && e.data.type === "mvPosition") {
-        sessionStorage.setItem("mvX", e.data.x);
-        sessionStorage.setItem("mvY", e.data.y);
-        sessionStorage.setItem("mvZ", e.data.z);
+          const count = data.playerCount;
+          document.getElementById("dash-count").textContent = count + (count <= 1 ? " joueur" : " joueurs");
+
+          const grid = document.getElementById("player-grid");
+          if (!count) {
+            grid.innerHTML = '<div id="empty-dash">Aucun joueur connecté pour le moment</div>';
+            return;
+          }
+
+          grid.innerHTML = data.players.map(p => `
+            <div class="player-card">
+              <div class="av">${(p.playerName || "?")[0].toUpperCase()}</div>
+              <div class="player-info">
+                <div class="player-name">${p.playerName || "Joueur"}</div>
+                <div class="player-sub">📍 ${p.x}, ${p.y}, ${p.z}</div>
+              </div>
+              <div class="badges">
+                ${p.muted
+                  ? '<span class="badge muted">🔇 Muté</span>'
+                  : '<span class="badge vocal">🎤 Vocal actif</span>'
+                }
+              </div>
+            </div>
+          `).join("");
+        } catch(e) {
+          document.getElementById("player-grid").innerHTML = '<div id="empty-dash">❌ Impossible de contacter le serveur</div>';
+        }
       }
-    });
 
-    socket.on("connect", () => {
-      document.getElementById("dot").classList.add("on");
-      document.getElementById("stxt").textContent = "Connecté — " + myName;
-    });
-    socket.on("disconnect", () => document.getElementById("dot").classList.remove("on"));
-    socket.on("existing-players", players => players.forEach(p => createPeer(p.socketId, p.playerName, true)));
-    socket.on("player-joined", ({ socketId, playerName }) => createPeer(socketId, playerName, false));
-    socket.on("player-left", ({ socketId }) => {
-      if (peers[socketId]) { peers[socketId].pc.close(); peers[socketId].audio.remove(); delete peers[socketId]; }
-      updateUI();
-    });
-    socket.on("nearby-players", list => {
-      list.forEach(({ socketId, volume, distance }) => {
-        if (peers[socketId]) {
-          peers[socketId].volume = volume;
-          peers[socketId].distance = distance;
-          if (peers[socketId].audio) peers[socketId].audio.volume = volume;
+      refreshDashboard();
+      setInterval(refreshDashboard, 3000);
+    }
+
+    // ===== MODE VOCAL =====
+    if (isVocalMode) {
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("vocal-mode").style.display = "block";
+
+      const socket = io();
+      window._mvSocket = socket;
+      let muted = false, stream = null;
+      const peers = {};
+
+      navigator.mediaDevices.getUserMedia({ audio:true, video:false })
+        .then(s => {
+          stream = s;
+          socket.emit("join", { playerId: myId, playerName: myName });
+          setInterval(() => {
+            const x = parseFloat(sessionStorage.getItem("mvX") || "0");
+            const y = parseFloat(sessionStorage.getItem("mvY") || "0");
+            const z = parseFloat(sessionStorage.getItem("mvZ") || "0");
+            socket.emit("update-position", { x, y, z });
+          }, 500);
+        })
+        .catch(() => { document.getElementById("stxt").textContent = "❌ Micro refusé"; });
+
+      window.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "mvPosition") {
+          sessionStorage.setItem("mvX", e.data.x);
+          sessionStorage.setItem("mvY", e.data.y);
+          sessionStorage.setItem("mvZ", e.data.z);
         }
       });
-      Object.keys(peers).forEach(id => {
-        if (!list.find(p => p.socketId === id)) {
-          if (peers[id].audio) peers[id].audio.volume = 0;
-          peers[id].volume = 0;
-          peers[id].distance = null;
-        }
+
+      socket.on("connect", () => {
+        document.getElementById("dot").classList.add("on");
+        document.getElementById("stxt").textContent = "Connecté — " + myName;
       });
-      updateUI();
-    });
-    socket.on("webrtc-offer", async ({ fromSocketId, fromName, offer }) => {
-      const pc = getPC(fromSocketId, fromName);
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit("webrtc-answer", { targetSocketId: fromSocketId, answer });
-    });
-    socket.on("webrtc-answer", async ({ fromSocketId, answer }) => {
-      if (peers[fromSocketId]) await peers[fromSocketId].pc.setRemoteDescription(new RTCSessionDescription(answer));
-    });
-    socket.on("ice-candidate", ({ fromSocketId, candidate }) => {
-      if (peers[fromSocketId] && candidate) peers[fromSocketId].pc.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-    socket.on("player-muted", ({ socketId, muted }) => {
-      if (peers[socketId]?.audio) peers[socketId].audio.muted = muted;
-    });
+      socket.on("disconnect", () => document.getElementById("dot").classList.remove("on"));
+      socket.on("existing-players", players => players.forEach(p => createPeer(p.socketId, p.playerName, true)));
+      socket.on("player-joined", ({ socketId, playerName }) => createPeer(socketId, playerName, false));
+      socket.on("player-left", ({ socketId }) => {
+        if (peers[socketId]) { peers[socketId].pc.close(); peers[socketId].audio.remove(); delete peers[socketId]; }
+        updateUI();
+      });
+      socket.on("nearby-players", list => {
+        list.forEach(({ socketId, volume, distance }) => {
+          if (peers[socketId]) {
+            peers[socketId].volume = volume;
+            peers[socketId].distance = distance;
+            if (peers[socketId].audio) peers[socketId].audio.volume = volume;
+          }
+        });
+        Object.keys(peers).forEach(id => {
+          if (!list.find(p => p.socketId === id)) {
+            if (peers[id].audio) peers[id].audio.volume = 0;
+            peers[id].volume = 0;
+            peers[id].distance = null;
+          }
+        });
+        updateUI();
+      });
+      socket.on("webrtc-offer", async ({ fromSocketId, fromName, offer }) => {
+        const pc = getPC(fromSocketId, fromName);
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("webrtc-answer", { targetSocketId: fromSocketId, answer });
+      });
+      socket.on("webrtc-answer", async ({ fromSocketId, answer }) => {
+        if (peers[fromSocketId]) await peers[fromSocketId].pc.setRemoteDescription(new RTCSessionDescription(answer));
+      });
+      socket.on("ice-candidate", ({ fromSocketId, candidate }) => {
+        if (peers[fromSocketId] && candidate) peers[fromSocketId].pc.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+      socket.on("player-muted", ({ socketId, muted }) => {
+        if (peers[socketId]?.audio) peers[socketId].audio.muted = muted;
+      });
 
-    function getPC(socketId, name) {
-      if (peers[socketId]) return peers[socketId].pc;
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-      const audio = new Audio(); audio.autoplay = true;
-      if (stream) stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      pc.ontrack = e => { audio.srcObject = e.streams[0]; };
-      pc.onicecandidate = e => { if (e.candidate) socket.emit("ice-candidate", { targetSocketId: socketId, candidate: e.candidate }); };
-      peers[socketId] = { pc, audio, name, volume: 1, distance: null };
-      updateUI();
-      return pc;
-    }
+      function getPC(socketId, name) {
+        if (peers[socketId]) return peers[socketId].pc;
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        const audio = new Audio(); audio.autoplay = true;
+        if (stream) stream.getTracks().forEach(t => pc.addTrack(t, stream));
+        pc.ontrack = e => { audio.srcObject = e.streams[0]; };
+        pc.onicecandidate = e => { if (e.candidate) socket.emit("ice-candidate", { targetSocketId: socketId, candidate: e.candidate }); };
+        peers[socketId] = { pc, audio, name, volume: 1, distance: null };
+        updateUI();
+        return pc;
+      }
 
-    function createPeer(socketId, name, init) {
-      const pc = getPC(socketId, name);
-      if (init) pc.createOffer().then(o => { pc.setLocalDescription(o); socket.emit("webrtc-offer", { targetSocketId: socketId, offer: o }); });
-    }
+      function createPeer(socketId, name, init) {
+        const pc = getPC(socketId, name);
+        if (init) pc.createOffer().then(o => { pc.setLocalDescription(o); socket.emit("webrtc-offer", { targetSocketId: socketId, offer: o }); });
+      }
 
-    function toggleMute() {
-      muted = !muted;
-      if (stream) stream.getAudioTracks().forEach(t => t.enabled = !muted);
-      const btn = document.getElementById("mute-btn");
-      btn.textContent = muted ? "🔇 Micro coupé" : "🎙 Micro activé";
-      btn.classList.toggle("muted", muted);
-      socket.emit("toggle-mute", muted);
-    }
-
-    function updateUI() {
-      const list = document.getElementById("plist");
-      const entries = Object.entries(peers);
-      if (!entries.length) { list.innerHTML = '<div id="empty">Aucun joueur à proximité</div>'; return; }
-      list.innerHTML = entries.map(([id, p]) => `
-        <div class="pcard">
-          <div class="pav">${(p.name||"?")[0].toUpperCase()}</div>
-          <div><div class="pname">${p.name||"Joueur"}</div><div class="pdist">${p.distance !== null ? p.distance+"m" : "hors portée"}</div></div>
-          <div class="vbar"><div class="vfill" style="width:${Math.round((p.volume||0)*100)}%"></div></div>
-        </div>`).join("");
-    }
-  </script>
-</body>
-</html>
+      function toggleMute
