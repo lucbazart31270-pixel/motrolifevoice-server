@@ -14,11 +14,28 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
+// ✅ ROUTE API DASHBOARD
+app.get("/api/players", (req, res) => {
+  const list = Object.entries(players).map(([socketId, p]) => ({
+    socketId,
+    playerName: p.playerName,
+    muted: p.muted || false,
+    x: Math.round(p.x || 0),
+    y: Math.round(p.y || 0),
+    z: Math.round(p.z || 0)
+  }));
+  res.json({
+    serverOnline: true,
+    playerCount: list.length,
+    players: list
+  });
+});
+
 io.on("connection", (socket) => {
   console.log("Connecté : " + socket.id);
 
   socket.on("join", ({ playerId, playerName }) => {
-    players[socket.id] = { playerId, playerName, x: 0, y: 0, z: 0 };
+    players[socket.id] = { playerId, playerName, x: 0, y: 0, z: 0, muted: false };
     console.log(playerName + " rejoint");
     socket.broadcast.emit("player-joined", { socketId: socket.id, playerName });
     const existing = Object.entries(players)
@@ -27,14 +44,12 @@ io.on("connection", (socket) => {
     socket.emit("existing-players", existing);
   });
 
-  // Reçoit la position depuis la page web directement
   socket.on("update-position", ({ x, y, z }) => {
     if (!players[socket.id]) return;
     players[socket.id].x = x;
     players[socket.id].y = y;
     players[socket.id].z = z;
 
-    // Calcule qui est à portée
     const nearby = [];
     for (const [id, p] of Object.entries(players)) {
       if (id === socket.id) continue;
@@ -47,7 +62,6 @@ io.on("connection", (socket) => {
     }
     socket.emit("nearby-players", nearby);
 
-    // Notifie aussi les voisins
     for (const { socketId } of nearby) {
       const p = players[socketId];
       if (!p) continue;
@@ -68,6 +82,7 @@ io.on("connection", (socket) => {
     io.to(targetSocketId).emit("ice-candidate", { fromSocketId: socket.id, candidate });
   });
   socket.on("toggle-mute", (muted) => {
+    if (players[socket.id]) players[socket.id].muted = muted;
     socket.broadcast.emit("player-muted", { socketId: socket.id, muted });
   });
   socket.on("disconnect", () => {
@@ -82,3 +97,4 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log("MotrolifeVoice démarré sur port " + PORT));
+
